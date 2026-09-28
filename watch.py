@@ -66,13 +66,19 @@ def run_search(pg, sp):
     cells.nth(max(boxes, key=lambda b: b[0]["x"])[1]).click(timeout=8000)
     pg.locator('button[aria-label="search.calendar.submit"]').first.click(force=True, timeout=5000)
     pg.wait_for_timeout(800)
-    # passengers
+    # passengers (best effort: on failure fall back to 1 adult so the search still runs)
     if sp.get("adults", 1) > 1:
-        pg.locator("#passenger-counters-input").click()
-        pg.wait_for_timeout(1200)
-        for _ in range(sp["adults"] - 1):
-            pg.get_by_role("button", name=re.compile("\\+|הוסף|plus", re.I)).first.click(timeout=5000)
-        pg.get_by_text("אישור", exact=True).first.click(force=True, timeout=5000)
+        try:
+            pg.locator("#passenger-counters-input").click(force=True)
+            pg.wait_for_timeout(1500)
+            plus = pg.locator("button[aria-label*='dult'][aria-label*='ncrease'], "
+                              "button[aria-label*='add'], button[aria-label*='plus'], "
+                              "button[aria-label*='הוסף'], button[aria-label*='increase']").first
+            for _ in range(sp["adults"] - 1):
+                plus.click(timeout=4000)
+            pg.locator("button[aria-label*='submit']").last.click(force=True, timeout=4000)
+        except Exception as e:
+            print(f"  passengers not set ({str(e)[:120]}); continuing with 1", file=sys.stderr)
     pg.screenshot(path=f"last-{slug(sp.get('_name', 'form'))}-form.png", full_page=True)
     pg.get_by_role("button", name=re.compile("חיפוש טיסה")).first.click()
 

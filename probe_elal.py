@@ -24,11 +24,7 @@ with sync_playwright() as p:
     pg.goto("https://booking.elal.com/booking/flights?market=IL&lang=he", timeout=90000)
     pg.wait_for_timeout(10000)
     dump(pg, "0-initial")
-    for label, tag in (("לאן?", "1-dest"), ("יציאה", "2-depart"), ("נוסע", "3-pax")):
-        try:
-            pg.get_by_text(label, exact=True).first.click(timeout=5000)
-            pg.wait_for_timeout(2500)
-            dump(pg, tag)
-        except Exception as e:
-            print("click failed", label, str(e)[:120])
+    pg.locator("#passenger-counters-input").click(force=True)
+    pg.wait_for_timeout(2500)
+    dump(pg, "3-pax")
     ctx.close()
