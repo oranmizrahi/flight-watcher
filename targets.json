@@ -2,18 +2,27 @@
   {
     "name": "SkyGini · קטניה→תל אביב 30.09",
     "url": "https://www.skygini.com/search-v2/2026-09-30_NULL_C-CTA_C-TLV_A2_S0_C0_I0_CL1_NOTDIRECT",
-    "state": "state.json",
     "start_marker": "טיסות עבורך",
     "ignore": [
       "עוגיות",
       "קבל הכל",
       "בחר העדפות"
+    ],
+    "date_offsets": [
+      -1,
+      0,
+      1,
+      2
+    ],
+    "alert_on": [
+      "drop",
+      "new",
+      "gone"
     ]
   },
   {
     "name": "El Al · קטניה→תל אביב 30.09",
     "url": "https://booking.elal.com/booking/flights?market=IL&lang=he",
-    "state": "state-elal.json",
     "start_marker": null,
     "search": {
       "one_way": true,
@@ -27,6 +36,8 @@
         "TLV"
       ],
       "adults": 2
-    }
+    },
+    "enabled": false,
+    "note": "Needs an Israeli IP: from US runners booking.elal.com redirects to a marketing page. Run locally, then set enabled=true."
   }
 ]
