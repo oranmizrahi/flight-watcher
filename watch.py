@@ -46,7 +46,7 @@ def run_search(pg, sp):
     y, m, d = (int(x) for x in sp["date"].split("-"))
     pg.wait_for_timeout(6000)
     if sp.get("one_way", True):
-        pg.get_by_text("כיוון אחד", exact=True).first.click(timeout=8000)
+        pg.get_by_text(re.compile(r"^(כיוון אחד|One way)$")).first.click(timeout=8000)
         pg.wait_for_timeout(800)
     if sp.get("origin"):
         pick_place(pg, "outbound-origin-location-input", sp["origin"][0], sp["origin"][1])
@@ -54,9 +54,10 @@ def run_search(pg, sp):
     # date: open calendar, jump to the month tab, click the day
     pg.locator("#outbound-departure\\,return-calendar-input").click()
     pg.wait_for_timeout(1500)
-    months = ["ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ"]
+    months = [r"ינו|Jan", r"פבר|Feb", r"מרץ|Mar", r"אפר|Apr", r"מאי|May", r"יונ|Jun",
+              r"יול|Jul", r"אוג|Aug", r"ספט|Sep", r"אוק|Oct", r"נוב|Nov", r"דצמ|Dec"]
     try:
-        pg.get_by_text(months[m - 1], exact=True).first.click(timeout=3000)
+        pg.get_by_text(re.compile(rf"^({months[m - 1]})\.?$")).first.click(timeout=3000)
         pg.wait_for_timeout(800)
     except Exception:
         pass
@@ -139,6 +140,59 @@ def send(msg):
     urllib.request.urlopen(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", data, timeout=30)
 
 
+SOLO_PRICE = re.compile(r"^[₪$€]\s?\d[\d,\.]*$")
+TIME_RE = re.compile(r"^\d{1,2}:\d{2}$")
+
+
+def parse_cards(lines):
+    """Group lines into flight cards -> {(airline, dep, duration, stops): [prices]}.
+    A card starts at the airline line (the line before the 'NKG' baggage line)
+    and ends at its 'בחר טיסה' line; works for SkyGini-style result lists."""
+    cards, cur = {}, None
+    for i, l in enumerate(lines):
+        if i + 1 < len(lines) and "KG" in lines[i + 1] and "KG" not in l and cur is None:
+            cur = [l]
+            continue
+        if cur is None:
+            continue
+        cur.append(l)
+        if "בחר טיסה" in l:
+            times = [x for x in cur if TIME_RE.match(x)]
+            dur = next((x for x in cur if re.match(r"^\d{1,2}:\d{2} ש", x)), "")
+            stops = next((x for x in cur if "עצירה" in x or "ישיר" in x), "")
+            price = next((x for x in cur if SOLO_PRICE.match(x)), None)
+            if price and times:
+                cards.setdefault((cur[0], times[0], dur.split(" ")[0], stops), []).append(price)
+            cur = None
+    return cards
+
+
+def num(p):
+    return float(re.sub(r"[^\d.]", "", p.replace(",", "")) or 0)
+
+
+def summarize(old_lines, new_lines):
+    """Human summary of what changed between two snapshots, one line per flight."""
+    o, n = parse_cards(old_lines), parse_cards(new_lines)
+    out = []
+    for k in sorted(set(o) | set(n)):
+        label = f"{k[0]} {k[1]} ({k[3] or 'ישיר'}, {k[2]})"
+        a, b = sorted(o.get(k, []), key=num), sorted(n.get(k, []), key=num)
+        if a == b:
+            continue
+        if not a:
+            out.append(f"➕ טיסה חדשה: {label} — {', '.join(b)}")
+        elif not b:
+            out.append(f"➖ הטיסה נעלמה: {label} (היה {', '.join(a)})")
+        elif len(a) == len(b):
+            for x, y in zip(a, b):
+                if x != y:
+                    out.append(f"{'📉 ירד' if num(y) < num(x) else '📈 עלה'}: {label} {x} ← {y}")
+        else:
+            out.append(f"🔀 {label}: היה {', '.join(a)} | עכשיו {', '.join(b)}")
+    return out
+
+
 def compare(t, lines):
     joined = "\n".join(lines)
     prices = PRICE_RE.findall(joined)
@@ -157,7 +211,14 @@ def compare(t, lines):
     elif old.get("lines") != lines:
         diff = [d for d in difflib.unified_diff(old.get("lines", []), lines, lineterm="", n=0)
                 if d[:1] in "+-" and d[:3] not in ("+++", "---")]
-        send(f"🔔 שינוי ב-{t['name']}\n" + "\n".join(diff[:40]) + f"\n\n{t['url']}")
+        summary = summarize(old.get("lines", []), lines)
+        since = old.get("updated", "?").replace("T", " ")[:16]
+        head = f"🔔 שינוי ב-{t['name']}\n(מאז הבדיקה ב-{since} UTC)\n"
+        if summary:
+            body = "\n".join(summary[:15])
+        else:
+            body = "לא זוהו שינויי מחיר/טיסות בכרטיסים; שינוי בטקסט הדף:\n" + "\n".join(diff[:12])
+        send(head + body + f"\n\n{t['url']}")
     else:
         print(f"  {t['name']}: no change.")
     json.dump(new, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
