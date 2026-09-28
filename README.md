@@ -66,7 +66,7 @@ by default. With an Israeli IP set `enabled:true` and use a route El Al actually
 that can't reach the form counts as a *failure*, not as "prices found".
 
 ## Cost / limits
-Runs take a few minutes each, every 15 min. Public repo: Actions minutes are free.
+Runs take a few minutes each, every 10 min. Public repo: Actions minutes are free.
 Private repo: 2,000 free min/month, so slow the cron or run it locally.
 
 ## Debug

@@ -1,7 +1,7 @@
 name: flight-watch
 on:
   schedule:
-    - cron: "*/15 * * * *"   # every ~15 min (GitHub may delay a few minutes)
+    - cron: "*/10 * * * *"   # every ~10 min (GitHub may delay a few minutes)
   workflow_dispatch: {}
 permissions:
   contents: write
