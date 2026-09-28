@@ -71,12 +71,10 @@ def run_search(pg, sp):
         try:
             pg.locator("#passenger-counters-input").click(force=True)
             pg.wait_for_timeout(1500)
-            plus = pg.locator("button[aria-label*='dult'][aria-label*='ncrease'], "
-                              "button[aria-label*='add'], button[aria-label*='plus'], "
-                              "button[aria-label*='הוסף'], button[aria-label*='increase']").first
             for _ in range(sp["adults"] - 1):
-                plus.click(timeout=4000)
-            pg.locator("button[aria-label*='submit']").last.click(force=True, timeout=4000)
+                pg.locator("#ADT-add").click(timeout=4000)
+            pg.mouse.click(700, 600)  # click away to close the popup
+            pg.wait_for_timeout(800)
         except Exception as e:
             print(f"  passengers not set ({str(e)[:120]}); continuing with 1", file=sys.stderr)
     pg.screenshot(path=f"last-{slug(sp.get('_name', 'form'))}-form.png", full_page=True)
