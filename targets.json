@@ -1,0 +1,14 @@
+[
+  {
+    "name": "SkyGini · קטניה→תל אביב 30.09",
+    "url": "https://www.skygini.com/search-v2/2026-09-30_NULL_C-CTA_C-TLV_A2_S0_C0_I0_CL1_NOTDIRECT",
+    "state": "state.json",
+    "start_marker": "טיסות עבורך"
+  },
+  {
+    "name": "El Al · booking",
+    "url": "https://booking.elal.com/booking/flights?market=IL&lang=he",
+    "state": "state-elal.json",
+    "start_marker": null
+  }
+]
