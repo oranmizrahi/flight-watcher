@@ -113,7 +113,7 @@ def main():
         # persistent context + real Chrome + headful: the combination Cloudflare
         # treats as a normal visitor. Do NOT add a custom UA here, it breaks the
         # fingerprint and gets the challenge back.
-        kwargs = dict(user_data_dir=PROFILE, headless=False, no_viewport=True,
+        kwargs = dict(user_data_dir=PROFILE, headless=os.environ.get("HEADLESS") == "1", no_viewport=True,
                       locale="he-IL", timezone_id="Asia/Jerusalem")
         try:
             ctx = p.chromium.launch_persistent_context(channel="chrome", **kwargs)
