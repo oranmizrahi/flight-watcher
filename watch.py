@@ -60,8 +60,11 @@ def run_search(pg, sp):
         pg.wait_for_timeout(800)
     except Exception:
         pass
-    pg.get_by_text(str(d), exact=True).locator("visible=true").last.click(timeout=8000)
-    pg.get_by_text("אישור", exact=True).first.click(timeout=5000)
+    # two months are shown side by side (RTL: first month = right panel = largest x)
+    cells = pg.get_by_text(str(d), exact=True).locator("visible=true")
+    boxes = [(cells.nth(i).bounding_box() or {"x": -1}, i) for i in range(cells.count())]
+    cells.nth(max(boxes, key=lambda b: b[0]["x"])[1]).click(timeout=8000)
+    pg.locator('button[aria-label="search.calendar.submit"]').first.click(force=True, timeout=5000)
     pg.wait_for_timeout(800)
     # passengers
     if sp.get("adults", 1) > 1:
@@ -69,7 +72,7 @@ def run_search(pg, sp):
         pg.wait_for_timeout(1200)
         for _ in range(sp["adults"] - 1):
             pg.get_by_role("button", name=re.compile("\\+|הוסף|plus", re.I)).first.click(timeout=5000)
-        pg.get_by_text("אישור", exact=True).first.click(timeout=5000)
+        pg.get_by_text("אישור", exact=True).first.click(force=True, timeout=5000)
     pg.screenshot(path=f"last-{slug(sp.get('_name', 'form'))}-form.png", full_page=True)
     pg.get_by_role("button", name=re.compile("חיפוש טיסה")).first.click()
 
