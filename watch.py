@@ -30,9 +30,59 @@ def slug(name):
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "target"
 
 
+def pick_place(pg, input_id, query, code):
+    """Type into an airport autocomplete and choose the option matching `code`."""
+    pg.locator(f"#{input_id}").click()
+    pg.keyboard.press("Control+A")
+    pg.keyboard.type(query, delay=80)
+    pg.wait_for_timeout(2500)
+    opt = pg.get_by_text(re.compile(rf"\b{code}\b")).first
+    opt.click(timeout=8000)
+    pg.wait_for_timeout(800)
+
+
+def run_search(pg, sp):
+    """Fill El Al's search form from targets.json 'search' block."""
+    y, m, d = (int(x) for x in sp["date"].split("-"))
+    pg.wait_for_timeout(6000)
+    if sp.get("one_way", True):
+        pg.get_by_text("כיוון אחד", exact=True).first.click(timeout=8000)
+        pg.wait_for_timeout(800)
+    if sp.get("origin"):
+        pick_place(pg, "outbound-origin-location-input", sp["origin"][0], sp["origin"][1])
+    pick_place(pg, "outbound-destination-location-input", sp["destination"][0], sp["destination"][1])
+    # date: open calendar, jump to the month tab, click the day
+    pg.locator("#outbound-departure\\,return-calendar-input").click()
+    pg.wait_for_timeout(1500)
+    months = ["ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ"]
+    try:
+        pg.get_by_text(months[m - 1], exact=True).first.click(timeout=3000)
+        pg.wait_for_timeout(800)
+    except Exception:
+        pass
+    pg.get_by_text(str(d), exact=True).locator("visible=true").last.click(timeout=8000)
+    pg.get_by_text("אישור", exact=True).first.click(timeout=5000)
+    pg.wait_for_timeout(800)
+    # passengers
+    if sp.get("adults", 1) > 1:
+        pg.locator("#passenger-counters-input").click()
+        pg.wait_for_timeout(1200)
+        for _ in range(sp["adults"] - 1):
+            pg.get_by_role("button", name=re.compile("\\+|הוסף|plus", re.I)).first.click(timeout=5000)
+        pg.get_by_text("אישור", exact=True).first.click(timeout=5000)
+    pg.screenshot(path=f"last-{slug(sp.get('_name', 'form'))}-form.png", full_page=True)
+    pg.get_by_role("button", name=re.compile("חיפוש טיסה")).first.click()
+
+
 def fetch(pg, t):
     """Load one target and return its visible lines."""
     pg.goto(t["url"], timeout=90000, wait_until="domcontentloaded")
+    if t.get("search"):
+        t["search"]["_name"] = t["name"]
+        try:
+            run_search(pg, t["search"])
+        except Exception as e:
+            print(f"  search automation failed on {t['name']}: {str(e)[:300]}", file=sys.stderr)
 
     # sit through the Cloudflare interstitial if we got one
     for _ in range(12):
@@ -66,6 +116,9 @@ def fetch(pg, t):
             lines = lines[hit:]
         else:
             print(f"  note: start_marker not found on {t['name']}, keeping whole page")
+    ignore = t.get("ignore", [])
+    if ignore:
+        lines = [l for l in lines if not any(x in l for x in ignore)]
     return lines
 
 
