@@ -5,14 +5,17 @@ on:
   workflow_dispatch: {}
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: flight-watch
   cancel-in-progress: false
 jobs:
   watch:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
+      - name: Remember start time
+        run: echo "START_TS=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12", cache: pip }
@@ -45,3 +48,19 @@ jobs:
           git commit -m "update state [skip ci]"
           git pull --rebase --autostash || true
           git push
+      - name: Chain next run in 10 min
+        # GitHub's cron is unreliable on new repos, so each run re-dispatches the next one.
+        # workflow_dispatch via GITHUB_TOKEN is exempt from the no-recursion rule.
+        # A run already queued behind us continues the chain, so we skip to avoid doubles.
+        if: always() && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          wait=$(( 600 - ($(date +%s) - START_TS) ))
+          [ "$wait" -gt 0 ] && sleep "$wait"
+          queued=$(gh run list --workflow watch.yml --status queued --json databaseId -q 'length' || echo 0)
+          if [ "${queued:-0}" -gt 0 ]; then
+            echo "a run is already queued; it continues the chain"
+          else
+            gh workflow run watch.yml --ref main
+          fi
