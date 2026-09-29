@@ -26,8 +26,8 @@ FAIL_ALERT_AFTER = int(os.environ.get("FAIL_ALERT_AFTER", "3"))
 HEARTBEAT_HOUR_UTC = int(os.environ.get("HEARTBEAT_HOUR_UTC", "6"))   # 09:00 Israel
 HISTORY_KEEP = 800
 
-PRICE_RE = re.compile(r"[₪$€]\s?\d[\d,\.]*|\d[\d,\.]*\s?[₪$€]")
-SOLO_PRICE = re.compile(r"^[₪$€]\s?\d[\d,\.]*$")
+PRICE_RE = re.compile(r"[₪$€][ \t]?\d[\d,\.]*|\d[\d,\.]*[ \t]?[₪$€]")
+SOLO_PRICE = re.compile(r"^[₪$€][ \t]?\d[\d,\.]*$")
 TIME_RE = re.compile(r"^\d{1,2}:\d{2}$")
 HAS_PRICE_JS = "document.body.innerText.match(/[₪$€]\\s?\\d|\\d\\s?[₪$€]/)"
 CHALLENGE = ("אימות אבטחה", "Just a moment", "Ray ID", "Checking your browser",
@@ -251,26 +251,36 @@ def analyze(old_lines, new_lines):
 def process(t, lines, hist, status):
     """Compare with the last snapshot, decide whether to alert. Returns True if usable."""
     cards = parse_cards(lines)
-    prices = all_prices(cards) or [num(p) for p in PRICE_RE.findall("\n".join(lines))]
-    if not prices:
+    prices = all_prices(cards)
+    no_flights = not cards and bool(t.get("start_marker"))
+    if not prices and not no_flights:
+        prices = [num(p) for p in PRICE_RE.findall("\n".join(lines))]
+    prices = [p for p in prices if p >= 10]
+    if not prices and not no_flights:
         raise RuntimeError("blocked by bot wall" if is_challenge("\n".join(lines))
                            else "no prices on page")
 
     path = os.path.join(DATA, f"state-{t['slug']}.json")
     old = load_json(path, None)
     cur = currency_of(cards, lines)
-    cheapest = min(prices)
     t_hist = hist.setdefault(t["slug"], [])
     prev_min = t_hist[-1]["min"] if t_hist else None
-    t_hist.append({"t": now_utc().isoformat(timespec="minutes"), "min": cheapest, "n": len(prices)})
-    del t_hist[:-HISTORY_KEEP]
-    lowest = min(h["min"] for h in t_hist)
-    trend = spark([h["min"] for h in t_hist[-24:]])
-
-    footer = f"💰 הזול ביותר: {money(cheapest, cur)} · שיא נמוך שנראה: {money(lowest, cur)}"
-    if trend:
-        footer += f"\n📊 {trend}"
-    status.append(f"• {t['name']}: {money(cheapest, cur)} (שיא נמוך {money(lowest, cur)}) {trend}")
+    if prices:
+        cheapest = min(prices)
+        t_hist.append({"t": now_utc().isoformat(timespec="minutes"), "min": cheapest, "n": len(prices)})
+        del t_hist[:-HISTORY_KEEP]
+    else:
+        cheapest = None
+    if cheapest is None:
+        footer = "אין טיסות זמינות בתאריך הזה כרגע"
+        status.append(f"• {t['name']}: אין טיסות")
+    else:
+        lowest = min(h["min"] for h in t_hist)
+        trend = spark([h["min"] for h in t_hist[-24:]])
+        footer = f"💰 הזול ביותר: {money(cheapest, cur)} · שיא נמוך שנראה: {money(lowest, cur)}"
+        if trend:
+            footer += f"\n📊 {trend}"
+        status.append(f"• {t['name']}: {money(cheapest, cur)} (שיא נמוך {money(lowest, cur)}) {trend}")
 
     new_state = {"updated": now_utc().isoformat(timespec="seconds"), "url": t["url"],
                  "lines": lines, "below_alerted": (old or {}).get("below_alerted")}
@@ -285,11 +295,11 @@ def process(t, lines, hist, status):
         reasons = [e[1] for e in events if e[0] in want or important]  # rises ride along
 
         thr = t.get("alert_below")
-        if thr and cheapest < thr and (new_state["below_alerted"] is None or cheapest < new_state["below_alerted"]):
+        if thr and cheapest is not None and cheapest < thr and (new_state["below_alerted"] is None or cheapest < new_state["below_alerted"]):
             reasons.insert(0, f"🎯 מחיר מתחת לסף שלך ({money(thr, cur)}): {money(cheapest, cur)}")
             important.append(("thr", ""))
             new_state["below_alerted"] = cheapest
-        elif thr and cheapest >= thr:
+        elif thr and cheapest is not None and cheapest >= thr:
             new_state["below_alerted"] = None
 
         if not events and old.get("lines") != lines and not cards:
@@ -304,7 +314,8 @@ def process(t, lines, hist, status):
             send(f"🔔 {t['name']}\n(מאז הבדיקה ב-{since} UTC)\n" + "\n".join(reasons[:15]) + f"\n\n{footer}", t["url"])
         else:
             quiet = f", {len(events)} שינויים לא משמעותיים" if events else ""
-            print(f"  {t['name']}: nothing worth alerting{quiet}. cheapest {money(cheapest, cur)}"
+            print(f"  {t['name']}: nothing worth alerting{quiet}. cheapest "
+                  f"{'none' if cheapest is None else money(cheapest, cur)}"
                   f"{'' if prev_min is None else f' (prev {money(prev_min, cur)})'}")
     save_json(path, new_state)
     return True
